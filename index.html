@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AR Mission: เจาะเวลาล่าความจริง พัฒนาการทางประวัติศาสตร์ไทย</title>
+    
+    <!-- Google Fonts: Kanit & Prompt สำหรับภาษาไทยที่อ่านง่ายและทันสมัย -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;700;800&family=Prompt:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Tone.js สำหรับเสียงประกอบเกม (Web Audio API) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <style>
+        body {
+            font-family: 'Kanit', sans-serif;
+            overflow-x: hidden;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            background-color: #090d16;
+            color: #ffffff;
+        }
+
+        /* พื้นหลังจำลอง AR กรณีไม่เปิดกล้อง หรือรอโหลดกล้อง */
+        .ar-simulated-bg {
+            background: radial-gradient(circle at 50% 30%, #1e293b 0%, #0f172a 55%, #020617 100%);
+            position: relative;
+        }
+        
+        /* เส้นตาราง AR Scanner Grid */
+        .ar-grid {
+            background-size: 40px 40px;
+            background-image: 
+                linear-gradient(to right, rgba(56, 189, 248, 0.08) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(56, 189, 248, 0.08) 1px, transparent 1px);
+            animation: gridMove 20s linear infinite;
+        }
+
+        @keyframes gridMove {
+            0% { background-position: 0 0; }
+            100% { background-position: 40px 40px; }
+        }
+
+        /* เอฟเฟกต์กรอบ AR HUD */
+        .ar-corner {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            border-color: #38bdf8;
+            border-style: solid;
+            pointer-events: none;
+            z-index: 20;
+        }
+        .ar-tl { top: 12px; left: 12px; border-width: 3px 0 0 3px; border-radius: 6px 0 0 0; }
+        .ar-tr { top: 12px; right: 12px; border-width: 3px 3px 0 0; border-radius: 0 6px 0 0; }
+        .ar-bl { bottom: 12px; left: 12px; border-width: 0 0 3px 3px; border-radius: 0 0 0 6px; }
+        .ar-br { bottom: 12px; right: 12px; border-width: 0 3px 3px 0; border-radius: 0 0 6px 0; }
+
+        /* การ์ด Glassmorphism ลอยในอากาศแบบ AR */
+        .ar-glass {
+            background: rgba(15, 23, 42, 0.78);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(56, 189, 248, 0.1);
+        }
+
+        /* อนิเมชันลอยตัวของวัตถุ AR */
+        .ar-float {
+            animation: floatObj 3.5s ease-in-out infinite;
+        }
+        @keyframes floatObj {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-6px); }
+        }
+
+        /* ด่านที่ 1: แอนิเมชันพลิกการ์ด 3D */
+        .perspective-1000 {
+            perspective: 1000px;
+        }
+        .flip-card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.5s cubic-bezier(0.4, 0.2, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+        .flip-card.flipped .flip-card-inner {
+            transform: rotateY(180deg);
+        }
+        .flip-card-front, .flip-card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            border-radius: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 0.6rem;
+        }
+        .flip-card-front {
+            background: linear-gradient(135deg, rgba(30, 58, 138, 0.85), rgba(15, 23, 42, 0.9));
+            border: 2px solid rgba(56, 189, 248, 0.5);
+            box-shadow: 0 4px 15px rgba(56, 189, 248, 0.2);
+        }
+        .flip-card-back {
+            background: linear-gradient(135deg, rgba(17, 24, 39, 0.95), rgba(30, 41, 59, 0.95));
+            border: 2px solid #fbbf24;
+            transform: rotateY(180deg);
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+        }
+        .flip-card.matched .flip-card-back {
+            border-color: #10b981;
+            background: linear-gradient(135deg, rgba(6, 78, 59, 0.9), rgba(15, 23, 42, 0.95));
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+        }
+
+        /* แอนิเมชันสั่นเมื่อตอบผิด */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
+        }
+        .animate-shake {
+            animation: shake 0.4s ease-in-out;
+        }
+
+        /* ปุ่มสไตล์เกม */
+        .game-btn {
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .game-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between relative overflow-hidden">
+
+    <!-- วิดีโอพื้นหลังกล้อง AR (ซ่อนไว้จนกว่าจะเปิดกล้องสำเร็จ) -->
+    <video id="ar-camera-feed" autoplay playsinline muted class="fixed inset-0 w-full h-full object-cover z-0 hidden"></video>
+    
+    <!-- พื้นหลังจำลอง AR กรณีไม่เปิดกล้องหรือใช้งานบนคอมพิวเตอร์ -->
+    <div id="ar-fallback-bg" class="fixed inset-0 ar-simulated-bg ar-grid z-0">
+        <!-- วงแหวนเรดาร์ AR ตรงกลาง -->
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[320px] h-[320px] md:w-[500px] md:h-[500px] rounded-full border border-sky-500/20 pointer-events-none animate-pulse"></div>
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[200px] md:w-[320px] md:h-[320px] rounded-full border border-dashed border-amber-400/20 pointer-events-none"></div>
+    </div>
+
+    <!-- เส้นสแกนและกรอบมุม AR HUD -->
+    <div class="ar-corner ar-tl"></div>
+    <div class="ar-corner ar-tr"></div>
+    <div class="ar-corner ar-bl"></div>
+    <div class="ar-corner ar-br"></div>
+
+    <!-- ==================== 1. หน้าปกเกม (COVER SCREEN) ==================== -->
+    <section id="screen-cover" class="relative z-10 min-h-screen flex flex-col items-center justify-center p-4 md:p-8 text-center">
+        <div class="max-w-xl w-full ar-glass rounded-3xl p-6 md:p-8 border-2 border-sky-400/50 shadow-2xl relative overflow-hidden">
+            
+            <!-- แถบสถานะระบบ AR ด้านบนการ์ด -->
+            <div class="flex items-center justify-between text-xs text-sky-300 mb-4 bg-slate-900/60 px-3 py-1.5 rounded-full border border-sky-500/30">
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> AR CHRONO-SCANNER v2.4</span>
+                <span>ประวัติศาสตร์ไทยยุคใหม่</span>
+            </div>
+
+            <!-- โลโก้ / ภาพกราฟิก 3D จำลองหน้าปก -->
+            <div class="relative mx-auto w-32 h-32 md:w-36 md:h-36 mb-4 ar-float flex items-center justify-center">
+                <!-- วงแหวนแสง -->
+                <div class="absolute inset-0 rounded-full bg-gradient-to-tr from-sky-500 via-indigo-500 to-amber-400 opacity-30 blur-xl"></div>
+                <svg viewBox="0 0 200 200" class="w-full h-full drop-shadow-[0_0_15px_rgba(56,189,248,0.6)]">
+                    <defs>
+                        <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#fde047"/>
+                            <stop offset="50%" stop-color="#f59e0b"/>
+                            <stop offset="100%" stop-color="#b45309"/>
+                        </linearGradient>
+                        <linearGradient id="cyberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#38bdf8"/>
+                            <stop offset="100%" stop-color="#6366f1"/>
+                        </linearGradient>
+                    </defs>
+                    <!-- วงโคจร AR -->
+                    <circle cx="100" cy="100" r="88" fill="none" stroke="url(#cyberGrad)" stroke-width="3" stroke-dasharray="12 6"/>
+                    <circle cx="100" cy="100" r="74" fill="rgba(15,23,42,0.85)" stroke="url(#goldGrad)" stroke-width="2.5"/>
+                    <!-- ไอคอนอนุสาวรีย์/สถาปัตยกรรมไทยประยุกต์ + เข็มทิศกาลเวลา -->
+                    <path d="M100 35 L112 65 L88 65 Z" fill="url(#goldGrad)"/>
+                    <rect x="82" y="68" width="36" height="8" rx="2" fill="#38bdf8"/>
+                    <rect x="72" y="80" width="56" height="45" rx="4" fill="url(#goldGrad)" opacity="0.9"/>
+                    <rect x="82" y="88" width="10" height="37" fill="#0f172a"/>
+                    <rect x="108" y="88" width="10" height="37" fill="#0f172a"/>
+                    <path d="M60 128 L140 128 L148 142 L52 142 Z" fill="url(#cyberGrad)"/>
+                    <!-- ดาวประกาย AR -->
+                    <circle cx="42" cy="55" r="4" fill="#fde047"/>
+                    <circle cx="160" cy="65" r="3" fill="#38bdf8"/>
+                    <circle cx="152" cy="145" r="4" fill="#fde047"/>
+                </svg>
+            </div>
+
+            <!-- ชื่อเกม -->
+            <div class="inline-block px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-xs md:text-sm font-semibold mb-2 tracking-wide">
+                ภารกิจข้ามมิติเวลา AR MISSION
+            </div>
+            <h1 class="text-2xl md:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-white to-amber-300 leading-tight mb-2">
+                เจาะเวลาล่าความจริง:<br>พัฒนาการทางประวัติศาสตร์ไทย
+            </h1>
+            <p class="text-slate-300 text-sm md:text-base mb-5 font-light">
+                สวมบทบาทนักสำรวจกาลเวลา สแกนข้อมูล 4 มิติ (การเมือง เศรษฐกิจ สังคม และความสัมพันธ์ระหว่างประเทศ) พิชิต 3 ด่านท้าทาย!
+            </p>
+
+            <!-- สรุปโครงสร้าง 3 ด่านบนหน้าปก -->
+            <div class="grid grid-cols-3 gap-2 mb-6 text-left">
+                <div class="bg-slate-900/70 border border-sky-500/30 rounded-xl p-2.5">
+                    <div class="text-sky-400 font-bold text-xs mb-0.5"><i class="fa-solid fa-layer-group mr-1"></i>ด่านที่ 1</div>
+                    <div class="text-white font-semibold text-xs md:text-sm">เปิดแผ่นป้าย AR</div>
+                    <div class="text-slate-400 text-[11px]">ระดับ: เริ่มต้น</div>
+                </div>
+                <div class="bg-slate-900/70 border border-indigo-500/30 rounded-xl p-2.5">
+                    <div class="text-indigo-400 font-bold text-xs mb-0.5"><i class="fa-solid fa-link mr-1"></i>ด่านที่ 2</div>
+                    <div class="text-white font-semibold text-xs md:text-sm">จับคู่รหัสเวลา</div>
+                    <div class="text-slate-400 text-[11px]">ระดับ: ปานกลาง</div>
+                </div>
+                <div class="bg-slate-900/70 border border-amber-500/30 rounded-xl p-2.5">
+                    <div class="text-amber-400 font-bold text-xs mb-0.5"><i class="fa-solid fa-bolt mr-1"></i>ด่านที่ 3</div>
+                    <div class="text-white font-semibold text-xs md:text-sm">พิชิต 5 คำถาม</div>
+                    <div class="text-slate-400 text-[11px]">ระดับ: ท้าทาย</div>
+                </div>
+            </div>
+
+            <!-- ปุ่มตัวเลือกเปิดกล้อง AR และเริ่มเกม -->
+            <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                <button id="btn-enable-camera" onclick="toggleARCamera()" class="game-btn px-4 py-3 rounded-2xl bg-slate-800/90 hover:bg-slate-700 border border-sky-400/50 text-sky-300 font-semibold text-sm flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-camera"></i>
+                    <span id="camera-btn-text">เปิดกล้อง AR (แนะนำ)</span>
+                </button>
+                <button onclick="startGame()" class="game-btn flex-1 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-400 hover:to-rose-400 text-white font-bold text-base md:text-lg shadow-[0_0_25px_rgba(245,158,11,0.5)] flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i>
+                    <span>เริ่มภารกิจทันที!</span>
+                </button>
+            </div>
+            <p id="camera-status-msg" class="text-xs text-slate-400 mt-3">
+                *สามารถเล่นได้ทันทีทั้งโหมดเปิดกล้อง AR จริง และโหมดจำลองหน้าจอเรดาร์
+            </p>
+        </div>
+    </section>
+
+    <!-- ==================== 2. หน้าจอเล่นเกม (GAMEPLAY HUD & STAGES) ==================== -->
+    <section id="screen-game" class="relative z-10 min-h-screen hidden flex-col justify-between p-3 md:p-6 max-w-4xl mx-auto w-full">
+        
+        <!-- แถบสถานะด้านบน (Top AR HUD) -->
+        <header class="ar-glass rounded-2xl p-3 md:px-5 flex flex-wrap items-center justify-between gap-2 border border-sky-400/40">
+            <!-- ข้อมูลด่าน -->
+            <div class="flex items-center gap-2.5">
+                <div id="hud-level-badge" class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center font-extrabold text-lg shadow-lg">
+                    1
+                </div>
+                <div>
+                    <div class="text-[11px] text-sky-300 uppercase tracking-wider font-semibold" id="hud-difficulty">ระดับความยาก: เริ่มต้น</div>
+                    <h2 class="text-sm md:text-base font-bold text-white leading-tight" id="hud-level-title">ด่านที่ 1: เปิดแผ่นป้าย AR</h2>
+                </div>
+            </div>
+
+            <!-- ตัวจับเวลา & คะแนน -->
+            <div class="flex items-center gap-3 md:gap-5">
+                <!-- ตัวจับเวลา -->
+                <div class="bg-slate-900/80 px-3 py-1.5 rounded-xl border border-rose-500/40 flex items-center gap-2">
+                    <i class="fa-solid fa-stopwatch text-rose-400 animate-pulse"></i>
+                    <div>
+                        <div class="text-[10px] text-slate-400 leading-none">เวลาที่เหลือ</div>
+                        <div id="hud-timer" class="text-base md:text-lg font-extrabold text-rose-400 font-mono leading-tight">60s</div>
+                    </div>
+                </div>
+
+                <!-- คะแนนรวมปัจจุบัน -->
+                <div class="bg-slate-900/80 px-3 py-1.5 rounded-xl border border-amber-400/40 flex items-center gap-2">
+                    <i class="fa-solid fa-star text-amber-400"></i>
+                    <div>
+                        <div class="text-[10px] text-slate-400 leading-none">คะแนนสะสม</div>
+                        <div id="hud-score" class="text-base md:text-lg font-extrabold text-amber-300 font-mono leading-tight">0</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- แถบคำอธิบายภารกิจประจำด่าน -->
+        <div class="my-2 px-3 py-2 rounded-xl bg-sky-950/70 border border-sky-500/30 text-center text-xs md:text-sm text-sky-200 flex items-center justify-center gap-2">
+            <i class="fa-solid fa-satellite-dish text-sky-400"></i>
+            <span id="hud-instruction">แตะเปิดแผ่นป้ายโฮโลแกรมเพื่อจับคู่เหตุการณ์และข้อมูลให้ถูกต้อง!</span>
+        </div>
+
+        <!-- พื้นที่เล่นเกมหลัก (Dynamic Stage Container) -->
+        <main id="stage-container" class="flex-1 flex flex-col items-center justify-center my-1 w-full">
+            <!-- เนื้อหาของแต่ละด่านจะถูกสร้างด้วย JavaScript ที่นี่ -->
+        </main>
+
+        <!-- แถบควบคุมด้านล่าง -->
+        <footer class="flex items-center justify-between text-xs text-slate-400 pt-2">
+            <button onclick="confirmQuitGame()" class="px-3 py-2 rounded-xl bg-slate-900/70 hover:bg-slate-800 border border-slate-700 text-slate-300 flex items-center gap-1.5">
+                <i class="fa-solid fa-house"></i> กลับหน้าปก
+            </button>
+            <div class="flex items-center gap-2">
+                <button onclick="toggleSound()" id="btn-sound" class="px-3 py-2 rounded-xl bg-slate-900/70 hover:bg-slate-800 border border-slate-700 text-sky-300 flex items-center gap-1.5">
+                    <i class="fa-solid fa-volume-high" id="sound-icon"></i> <span id="sound-text">เปิดเสียง</span>
+                </button>
+            </div>
+        </footer>
+    </section>
+
+    <!-- ==================== 3. หน้าต่างสรุปผลระหว่างด่าน (STAGE CLEAR MODAL) ==================== -->
+    <div id="modal-stage-clear" class="fixed inset-0 z-30 bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-4">
+        <div class="max-w-md w-full ar-glass rounded-3xl p-6 text-center border-2 border-emerald-400/60 shadow-2xl transform transition-all">
+            <div id="stage-clear-icon" class="w-20 h-20 mx-auto mb-3 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center text-4xl text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.4)]">
+                <i class="fa-solid fa-check-double"></i>
+            </div>
+            <h3 id="stage-clear-title" class="text-2xl font-extrabold text-white mb-1">ผ่านด่านที่ 1 สำเร็จ!</h3>
+            <p id="stage-clear-subtitle" class="text-sm text-emerald-300 mb-4">ข้อมูลประวัติศาสตร์ถูกกู้คืนเรียบร้อย</p>
+            
+            <!-- รายละเอียดคะแนนด่านนี้ -->
+            <div class="bg-slate-900/80 rounded-2xl p-4 mb-5 border border-slate-700 space-y-2 text-sm">
+                <div class="flex justify-between text-slate-300">
+                    <span>คะแนนพื้นฐานประจำด่าน:</span>
+                    <span id="sc-base" class="font-bold text-white">+0</span>
+                </div>
+                <div class="flex justify-between text-amber-300">
+                    <span><i class="fa-solid fa-bolt mr-1"></i>โบนัสเวลาที่เหลือ (<span id="sc-time-left">0</span> วิ):</span>
+                    <span id="sc-bonus" class="font-bold">+0</span>
+                </div>
+                <div class="border-t border-slate-700 pt-2 flex justify-between text-base font-extrabold text-emerald-400">
+                    <span>คะแนนรวมสะสม:</span>
+                    <span id="sc-total">0</span>
+                </div>
+            </div>
+
+            <button id="btn-next-stage" onclick="proceedToNextStage()" class="game-btn w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-base shadow-lg flex items-center justify-center gap-2">
+                <span>ลุยต่อด่านถัดไป</span>
+                <i class="fa-solid fa-arrow-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- ==================== 4. หน้าสรุปคะแนนหลังจบเกม (FINAL SUMMARY SCREEN) ==================== -->
+    <section id="screen-summary" class="relative z-20 min-h-screen hidden flex-col items-center justify-center p-4 md:p-6">
+        <div class="max-w-lg w-full ar-glass rounded-3xl p-6 md:p-8 border-2 border-amber-400/60 text-center shadow-2xl">
+            
+            <div class="inline-block px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-xs font-bold mb-2">
+                ภารกิจเสร็จสมบูรณ์ • MISSION ACCOMPLISHED
+            </div>
+            
+            <!-- เหรียญรางวัล / ยศที่ได้รับ -->
+            <div id="final-rank-badge" class="w-24 h-24 mx-auto my-3 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 p-1 shadow-[0_0_30px_rgba(251,191,36,0.6)] flex items-center justify-center">
+                <div class="w-full h-full rounded-full bg-slate-900 flex flex-col items-center justify-center">
+                    <i class="fa-solid fa-crown text-3xl text-amber-400 mb-0.5"></i>
+                    <span id="final-grade" class="text-xs font-extrabold text-amber-200">ระดับ S</span>
+                </div>
+            </div>
+
+            <h2 id="final-rank-title" class="text-2xl md:text-3xl font-extrabold text-white mb-1">ปรมาจารย์นักประวัติศาสตร์ AR</h2>
+            <p id="final-rank-desc" class="text-slate-300 text-xs md:text-sm mb-5">ยอดเยี่ยมมาก! คุณเชี่ยวชาญพัฒนาการทางประวัติศาสตร์ไทยครบทั้ง 4 ด้าน</p>
+
+            <!-- ตารางสรุปคะแนนแต่ละด่านและคะแนนโบนัส -->
+            <div class="bg-slate-900/85 rounded-2xl p-4 border border-slate-700/80 mb-5 text-left space-y-2.5 text-xs md:text-sm">
+                <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+                    <span class="text-sky-300 font-semibold"><i class="fa-solid fa-layer-group w-5"></i>ด่านที่ 1 (เปิดแผ่นป้าย)</span>
+                    <div class="text-right">
+                        <span id="sum-s1-score" class="text-white font-bold">0</span>
+                        <span id="sum-s1-bonus" class="text-amber-400 text-xs ml-1">(+0 โบนัส)</span>
+                    </div>
+                </div>
+                <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+                    <span class="text-indigo-300 font-semibold"><i class="fa-solid fa-link w-5"></i>ด่านที่ 2 (จับคู่รหัสเวลา)</span>
+                    <div class="text-right">
+                        <span id="sum-s2-score" class="text-white font-bold">0</span>
+                        <span id="sum-s2-bonus" class="text-amber-400 text-xs ml-1">(+0 โบนัส)</span>
+                    </div>
+                </div>
+                <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+                    <span class="text-rose-300 font-semibold"><i class="fa-solid fa-bolt w-5"></i>ด่านที่ 3 (พิชิต 5 ข้อสอบ)</span>
+                    <div class="text-right">
+                        <span id="sum-s3-score" class="text-white font-bold">0</span>
+                        <span id="sum-s3-bonus" class="text-amber-400 text-xs ml-1">(+0 โบนัส)</span>
+                    </div>
+                </div>
+                
+                <!-- โบนัสพิเศษ -->
+                <div class="flex justify-between items-center text-amber-300 pt-1">
+                    <span><i class="fa-solid fa-gift w-5"></i>โบนัสพิเศษรวม (เวลา + ความแม่นยำ)</span>
+                    <span id="sum-total-bonus" class="font-bold">+0 คะแนน</span>
+                </div>
+
+                <!-- คะแนนสุทธิ -->
+                <div class="mt-2 pt-3 border-t-2 border-amber-500/40 flex justify-between items-center">
+                    <span class="text-base font-bold text-white">คะแนนสุทธิทั้งหมด</span>
+                    <span id="sum-grand-total" class="text-2xl md:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500">0</span>
+                </div>
+            </div>
+
+            <!-- ปุ่มเล่นใหม่ (สุ่มโจทย์และตัวเลือกใหม่ทั้งหมด) -->
+            <button onclick="startGame()" class="game-btn w-full py-3.5 rounded-2xl bg-gradient-to-r from-sky-500 via-indigo-500 to-purple-600 hover:from-sky-400 hover:to-purple-500 text-white font-bold text-base shadow-[0_0_20px_rgba(99,102,241,0.5)] flex items-center justify-center gap-2">
+                <i class="fa-solid fa-rotate-right"></i>
+                <span>เล่นใหม่อีกครั้ง (สุ่มโจทย์ใหม่ทั้งหมด)</span>
+            </button>
+        </div>
+    </section>
+
+    <!-- กล่องข้อความแจ้งเตือนแบบ Custom (แทน alert/confirm) -->
+    <div id="custom-toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full bg-slate-900/95 border border-sky-400 text-white text-sm font-semibold shadow-2xl hidden items-center gap-2 transition-all">
+        <i id="toast-icon" class="fa-solid fa-circle-info text-sky-400"></i>
+        <span id="toast-msg">ข้อความแจ้งเตือน</span>
+    </div>
+
+    <!-- กล่องยืนยันการออกจากเกม -->
+    <div id="modal-quit" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="max-w-xs w-full ar-glass rounded-2xl p-5 text-center border border-slate-600">
+            <h4 class="text-lg font-bold text-white mb-2">ออกจากภารกิจปัจจุบัน?</h4>
+            <p class="text-xs text-slate-300 mb-4">คะแนนในรอบนี้จะไม่ถูกบันทึก</p>
+            <div class="flex gap-2">
+                <button onclick="closeQuitModal()" class="flex-1 py-2 rounded-xl bg-slate-700 text-white text-sm font-semibold">เล่นต่อ</button>
+                <button onclick="quitToCover()" class="flex-1 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold">ออก</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ============================================================================
+           1. ฐานข้อมูลเนื้อหา "พัฒนาการทางประวัติศาสตร์" (อ้างอิงจากภาพประกอบ 100%)
+           ============================================================================ */
+        
+        // ข้อมูลสำหรับด่านที่ 1: เปิดแผ่นป้ายจับคู่ (มี 6 คู่ สุ่มมาเล่นครั้งละ 4 คู่ = 8 แผ่นป้าย)
+        const STAGE1_POOL = [
+            {
+                id: "s1_1",
+                category: "การเมืองการปกครอง",
+                icon: "fa-landmark",
+                term: "14 ตุลาคม พ.ศ. 2516",
+                detail: "เหตุการณ์มหาวิปโยค กระแสเรียกร้องประชาธิปไตย"
+            },
+            {
+                id: "s1_2",
+                category: "เศรษฐกิจ",
+                term: "วิกฤตต้มยำกุ้ง",
+                detail: "กู้เงินกองทุน IMF และน้อมนำเศรษฐกิจพอเพียง"
+            },
+            {
+                id: "s1_3",
+                category: "เศรษฐกิจ",
+                term: "จอมพล สฤษดิ์ ธนะรัชต์",
+                detail: "ส่งเสริมเอกชนลงทุน จัดทำแผนพัฒนาเศรษฐกิจฯ ฉบับที่ 1"
+            },
+            {
+                id: "s1_4",
+                category: "สังคม",
+                term: "ชาตินิยมทางวัฒนธรรม",
+                detail: "สมัยจอมพล ป. ยกฐานะสตรีให้เท่าเทียมบุรุษ"
+            },
+            {
+                id: "s1_5",
+                category: "ความสัมพันธ์ระหว่างประเทศ",
+                term: "สงครามโลกครั้งที่ 2",
+                detail: "ช่วงแรกวางตัวเป็นกลาง ต่อมาเปลี่ยนไปเข้าร่วมกับญี่ปุ่น"
+            },
+            {
+                id: "s1_6",
+                category: "ความสัมพันธ์ระหว่างประเทศ",
+                term: "ยุคสงครามเย็น",
+                detail: "ต่อต้านคอมมิวนิสต์ตามสหรัฐฯ ภายหลังเปิดสัมพันธ์กับจีน"
+            }
+        ];
+
+        // ข้อมูลสำหรับด่านที่ 2: จับคู่รหัสเหตุการณ์กับผลลัพธ์/ยุคสมัย (มี 8 คู่ สุ่มมาเล่นครั้งละ 5 คู่)
+        const STAGE2_POOL = [
+            {
+                id: "s2_1",
+                left: "การเปลี่ยนแปลงการปกครองโดยคณะราษฎร",
+                right: "ปฏิรูปสังคมภายใต้หลักความเสมอภาคและประชาธิปไตย"
+            },
+            {
+                id: "s2_2",
+                left: "นโยบายทุนนิยมโดยรัฐ (จอมพล ป. พิบูลสงคราม)",
+                right: "สนับสนุนให้คนไทยใช้สินค้าที่ผลิตในประเทศไทย"
+            },
+            {
+                id: "s2_3",
+                left: "นโยบายเศรษฐกิจไทยในยุคปัจจุบัน",
+                right: "แก้หนี้ครัวเรือน ผลักดันท่องเที่ยว และส่งเสริม Soft Power"
+            },
+            {
+                id: "s2_4",
+                left: "การฟื้นฟูสถาบันพระมหากษัตริย์และพระราชพิธี",
+                right: "เกิดขึ้นในสมัยรัฐบาลจอมพล สฤษดิ์ ธนะรัชต์"
+            },
+            {
+                id: "s2_5",
+                left: "นโยบายต่างประเทศหลังสงครามเย็นจนถึงปัจจุบัน",
+                right: "รักษาความเป็นมิตรกับนานาชาติ วางตัวไม่ฝักใฝ่ฝ่ายใด"
+            },
+            {
+                id: "s2_6",
+                left: "ลำดับพัฒนาการเมืองการปกครองไทย (3 ยุค)",
+                right: "คณะราษฎร ➔ รัฐประหาร ➔ เรียกร้องประชาธิปไตย"
+            },
+            {
+                id: "s2_7",
+                left: "เหตุการณ์พฤษภาทมิฬ พ.ศ. 2535",
+                right: "การเมืองภายใต้กระแสเรียกร้องความเป็นประชาธิปไตย"
+            },
+            {
+                id: "s2_8",
+                left: "สภาพสังคมไทยในยุคปัจจุบัน",
+                right: "ก้าวหน้าทางเทคโนโลยีสารสนเทศ รับวัฒนธรรมต่างชาติ"
+            }
+        ];
+
+        // คลังข้อสอบสำหรับด่านที่ 3: ข้อสอบ 4 ตัวเลือก (มี 10 ข้อ สุ่มมาออกครั้งละ 5 ข้อ และสลับตัวเลือกทุกข้อ)
+        const STAGE3_POOL = [
+            {
+                category: "ด้านการเมืองการปกครอง",
+                question: "ข้อใดเรียงลำดับพัฒนาการทางการเมืองการปกครองของไทยได้ถูกต้อง?",
+                options: [
+                    "การชี้นำของคณะราษฎร ➔ การรัฐประหาร ➔ กระแสเรียกร้องประชาธิปไตย",
+                    "การรัฐประหาร ➔ การชี้นำของคณะราษฎร ➔ กระแสเรียกร้องประชาธิปไตย",
+                    "กระแสเรียกร้องประชาธิปไตย ➔ การรัฐประหาร ➔ การชี้นำของคณะราษฎร",
+                    "การชี้นำของคณะราษฎร ➔ กระแสเรียกร้องประชาธิปไตย ➔ การรัฐประหาร"
+                ],
+                answer: "การชี้นำของคณะราษฎร ➔ การรัฐประหาร ➔ กระแสเรียกร้องประชาธิปไตย"
+            },
+            {
+                category: "ด้านการเมืองการปกครอง",
+                question: "เหตุการณ์ใดจัดอยู่ในการเมืองการปกครองภายใต้กระแสเรียกร้องความเป็นประชาธิปไตย?",
+                options: [
+                    "เหตุการณ์มหาวิปโยค 14 ตุลาคม พ.ศ. 2516 และพฤษภาทมิฬ พ.ศ. 2535",
+                    "การปฏิรูปสังคมภายใต้หลักความเสมอภาคของคณะราษฎร",
+                    "การประกาศใช้นโยบายทุนนิยมโดยรัฐและชาตินิยมทางวัฒนธรรม",
+                    "การจัดทำแผนพัฒนาเศรษฐกิจและสังคมแห่งชาติ ฉบับที่ 1"
+                ],
+                answer: "เหตุการณ์มหาวิปโยค 14 ตุลาคม พ.ศ. 2516 และพฤษภาทมิฬ พ.ศ. 2535"
+            },
+            {
+                category: "ด้านเศรษฐกิจ",
+                question: "ในสมัยรัฐบาลจอมพล ป. พิบูลสงคราม ประเทศไทยใช้นโยบายเศรษฐกิจรูปแบบใด?",
+                options: [
+                    "ทุนนิยมโดยรัฐ และสนับสนุนให้คนไทยใช้ของที่ผลิตในประเทศ",
+                    "ส่งเสริมการลงทุนของภาคเอกชนและจัดทำแผนพัฒนาเศรษฐกิจฯ ฉบับที่ 1",
+                    "น้อมนำปรัชญาของเศรษฐกิจพอเพียงและกู้เงินจากกองทุน IMF",
+                    "ส่งเสริมการส่งออก แก้ปัญหาหนี้ครัวเรือน และผลักดัน Soft Power"
+                ],
+                answer: "ทุนนิยมโดยรัฐ และสนับสนุนให้คนไทยใช้ของที่ผลิตในประเทศ"
+            },
+            {
+                category: "ด้านเศรษฐกิจ",
+                question: "รัฐบาลใดที่ส่งเสริมการลงทุนของเอกชนเพื่อพัฒนาอุตสาหกรรม และจัดทำแผนพัฒนาเศรษฐกิจแห่งชาติ ฉบับที่ 1?",
+                options: [
+                    "รัฐบาลจอมพล สฤษดิ์ ธนะรัชต์",
+                    "รัฐบาลจอมพล ป. พิบูลสงคราม",
+                    "รัฐบาลคณะราษฎร",
+                    "รัฐบาลช่วงวิกฤตต้มยำกุ้ง"
+                ],
+                answer: "รัฐบาลจอมพล สฤษดิ์ ธนะรัชต์"
+            },
+            {
+                category: "ด้านเศรษฐกิจ",
+                question: "เมื่อเกิดวิกฤตการณ์ทางเศรษฐกิจ (วิกฤตต้มยำกุ้ง) ประเทศไทยมีแนวทางแก้ไขปัญหาอย่างไร?",
+                options: [
+                    "กู้ยืมเงินจากกองทุน IMF และน้อมนำปรัชญาของเศรษฐกิจพอเพียงมาปรับใช้",
+                    "ใช้นโยบายทุนนิยมโดยรัฐและรณรงค์ให้ซื้อสินค้าไทยเท่านั้น",
+                    "ปิดประเทศทางการค้าและยกเลิกการลงทุนจากต่างชาติทั้งหมด",
+                    "จัดทำแผนพัฒนาเศรษฐกิจแห่งชาติ ฉบับที่ 1 เพื่อสร้างโรงงานรัฐ"
+                ],
+                answer: "กู้ยืมเงินจากกองทุน IMF และน้อมนำปรัชญาของเศรษฐกิจพอเพียงมาปรับใช้"
+            },
+            {
+                category: "ด้านเศรษฐกิจ",
+                question: "ข้อใดกล่าวถึงแนวทางการพัฒนาเศรษฐกิจของไทยในปัจจุบันได้ถูกต้องที่สุด?",
+                options: [
+                    "แก้ปัญหาหนี้สินครัวเรือน ผลักดันการท่องเที่ยว และส่งเสริมซอฟต์พาวเวอร์ (Soft Power)",
+                    "เน้นการสร้างรัฐวิสาหกิจขนาดใหญ่และจำกัดการลงทุนจากต่างชาติ",
+                    "กู้ยืมเงินจากกองทุน IMF เพื่อพยุงค่าเงินบาทเป็นหลัก",
+                    "ใช้นโยบายเศรษฐกิจแบบพึ่งพาเกษตรกรรมเพียงอย่างเดียว"
+                ],
+                answer: "แก้ปัญหาหนี้สินครัวเรือน ผลักดันการท่องเที่ยว และส่งเสริมซอฟต์พาวเวอร์ (Soft Power)"
+            },
+            {
+                category: "ด้านสังคม",
+                question: "นโยบายด้านสังคมในสมัยจอมพล ป. พิบูลสงคราม มีลักษณะเด่นอย่างไร?",
+                options: [
+                    "ใช้นโยบายชาตินิยมทางวัฒนธรรม และมีการยกฐานะสตรีให้เท่าเทียมกับบุรุษ",
+                    "ฟื้นฟูความสำคัญของสถาบันพระมหากษัตริย์และพระราชพิธีต่าง ๆ",
+                    "ส่งเสริมความก้าวหน้าทางเทคโนโลยีสารสนเทศและสื่อดิจิทัล",
+                    "ยกเลิกวัฒนธรรมดั้งเดิมทั้งหมดเพื่อรับวัฒนธรรมตะวันตก"
+                ],
+                answer: "ใช้นโยบายชาตินิยมทางวัฒนธรรม และมีการยกฐานะสตรีให้เท่าเทียมกับบุรุษ"
+            },
+            {
+                category: "ด้านสังคม",
+                question: "หลังเปลี่ยนแปลงการปกครอง คณะราษฎรได้ปฏิรูปสังคมไทยภายใต้หลักการสำคัญข้อใด?",
+                options: [
+                    "หลักความเสมอภาค และปลูกฝังค่านิยมประชาธิปไตย",
+                    "หลักชาตินิยมทางวัฒนธรรมและการยกฐานะสตรี",
+                    "หลักการฟื้นฟูพระราชพิธีโบราณในราชสำนัก",
+                    "หลักการพัฒนาเทคโนโลยีสารสนเทศสมัยใหม่"
+                ],
+                answer: "หลักความเสมอภาค และปลูกฝังค่านิยมประชาธิปไตย"
+            },
+            {
+                category: "ด้านความสัมพันธ์ระหว่างประเทศ",
+                question: "ท่าทีของประเทศไทยในช่วงสงครามโลกครั้งที่ 2 มีการเปลี่ยนแปลงอย่างไร?",
+                options: [
+                    "ช่วงแรกวางตัวเป็นกลาง ต่อมารัฐบาลไทยได้เปลี่ยนไปเข้าร่วมกับญี่ปุ่น",
+                    "เข้าร่วมกับฝ่ายสัมพันธมิตรตั้งแต่ต้นจนจบสงคราม",
+                    "ประกาศตัวเป็นพันธมิตรกับจีนเพื่อต่อต้านญี่ปุ่นตั้งแต่เริ่มสงคราม",
+                    "วางตัวเป็นกลางตลอดสงครามโดยไม่เข้าร่วมกับฝ่ายใดเลย"
+                ],
+                answer: "ช่วงแรกวางตัวเป็นกลาง ต่อมารัฐบาลไทยได้เปลี่ยนไปเข้าร่วมกับญี่ปุ่น"
+            },
+            {
+                category: "ด้านความสัมพันธ์ระหว่างประเทศ",
+                question: "นโยบายต่างประเทศของไทยในยุคสงครามเย็นมีการปรับเปลี่ยนอย่างไร?",
+                options: [
+                    "เดิมต่อต้านคอมมิวนิสต์ตามอย่างสหรัฐอเมริกา ภายหลังได้เปิดความสัมพันธ์ทางการทูตกับจีน",
+                    "เดิมเป็นพันธมิตรกับจีน ภายหลังเปลี่ยนไปเข้าร่วมกับญี่ปุ่น",
+                    "วางตัวไม่ฝักใฝ่ฝ่ายใดตั้งแต่ต้นยุคสงครามเย็นจนถึงปัจจุบัน",
+                    "ตัดความสัมพันธ์ทางการทูตกับสหรัฐอเมริกาและนานาชาติ"
+                ],
+                answer: "เดิมต่อต้านคอมมิวนิสต์ตามอย่างสหรัฐอเมริกา ภายหลังได้เปิดความสัมพันธ์ทางการทูตกับจีน"
+            }
+        ];
+
+        /* ============================================================================
+           2. ระบบเสียงประกอบ (Tone.js Synthesizer - ไม่ต้องพึ่งไฟล์เสียงภายนอก)
+           ============================================================================ */
+        let soundEnabled = true;
+        let synth = null;
+
+        function initAudio() {
+            if (!synth && typeof Tone !== 'undefined') {
+                synth = new Tone.PolySynth(Tone.Synth).toDestination();
+                synth.volume.value = -8;
+            }
+        }
+
+        function playSound(type) {
+            if (!soundEnabled) return;
+            try {
+                initAudio();
+                if (Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+                const now = Tone.now();
+                if (type === 'flip') {
+                    synth.triggerAttackRelease("C5", "32n", now);
+                } else if (type === 'select') {
+                    synth.triggerAttackRelease("E5", "32n", now);
+                } else if (type === 'match') {
+                    synth.triggerAttackRelease(["C5", "E5", "G5"], "16n", now);
+                } else if (type === 'wrong') {
+                    synth.triggerAttackRelease(["C3", "Db3"], "8n", now);
+                } else if (type === 'win') {
+                    synth.triggerAttackRelease("C5", "16n", now);
+                    synth.triggerAttackRelease("E5", "16n", now + 0.1);
+                    synth.triggerAttackRelease("G5", "16n", now + 0.2);
+                    synth.triggerAttackRelease("C6", "8n", now + 0.3);
+                }
+            } catch (e) {
+                // ข้ามกรณีเบราว์เซอร์บล็อกเสียงอัตโนมัติ
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('sound-icon');
+            const text = document.getElementById('sound-text');
+            if (soundEnabled) {
+                icon.className = "fa-solid fa-volume-high";
+                text.textContent = "เปิดเสียง";
+                playSound('select');
+            } else {
+                icon.className = "fa-solid fa-volume-xmark";
+                text.textContent = "ปิดเสียง";
+            }
+        }
+
+        /* ============================================================================
+           3. ระบบกล้อง AR (WebRTC Camera Stream พร้อมโหมดสำรองอัตโนมัติ)
+           ============================================================================ */
+        let cameraActive = false;
+        let mediaStream = null;
+
+        async function toggleARCamera() {
+            const videoEl = document.getElementById('ar-camera-feed');
+            const fallbackEl = document.getElementById('ar-fallback-bg');
+            const btnText = document.getElementById('camera-btn-text');
+            const statusMsg = document.getElementById('camera-status-msg');
+
+            if (cameraActive) {
+                // ปิดกล้อง
+                if (mediaStream) {
+                    mediaStream.getTracks().forEach(track => track.stop());
+                }
+                videoEl.classList.add('hidden');
+                fallbackEl.classList.remove('hidden');
+                cameraActive = false;
+                btnText.textContent = "เปิดกล้อง AR (แนะนำ)";
+                statusMsg.textContent = "สลับกลับสู่โหมดเรดาร์จำลอง AR แล้ว";
+                return;
+            }
+
+            try {
+                statusMsg.textContent = "กำลังเชื่อมต่อกล้อง AR...";
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" }, // ใช้กล้องหลังสำหรับมือถือ
+                    audio: false
+                });
+                videoEl.srcObject = mediaStream;
+                videoEl.classList.remove('hidden');
+                fallbackEl.classList.add('hidden');
+                cameraActive = true;
+                btnText.textContent = "ปิดกล้อง AR";
+                statusMsg.textContent = "เชื่อมต่อกล้อง AR สำเร็จ! ส่องไปยังพื้นที่ว่างเพื่อเล่น";
+                showToast("เปิดใช้งานกล้อง AR สำเร็จ!", "success");
+            } catch (err) {
+                console.warn("Camera access denied or unavailable:", err);
+                statusMsg.textContent = "ไม่พบกล้องหรือไม่ได้รับอนุญาต ระบบใช้โหมดเรดาร์จำลอง AR อัตโนมัติ";
+                showToast("ใช้งานโหมดเรดาร์จำลอง AR (ไม่ต้องใช้กล้อง)", "info");
+            }
+        }
+
+        /* ============================================================================
+           4. ตัวแปรสถานะเกม (GAME STATE) และฟังก์ชันสลับข้อมูล (SHUFFLE)
+           ============================================================================ */
+        let gameState = {
+            currentStage: 1,
+            timer: 0,
+            timerInterval: null,
+            totalScore: 0,
+            stageScores: {
+                1: { base: 0, bonus: 0 },
+                2: { base: 0, bonus: 0 },
+                3: { base: 0, bonus: 0 }
+            },
+            streakBonus: 0 // โบนัสตอบถูกต่อเนื่อง
+        };
+
+        // ฟังก์ชันสลับลำดับอาเรย์ (Fisher-Yates Shuffle)
+        function shuffleArray(array) {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        // แสดง Toast แจ้งเตือนสั้นๆ
+        let toastTimeout = null;
+        function showToast(msg, type = 'info') {
+            const toast = document.getElementById('custom-toast');
+            const toastMsg = document.getElementById('toast-msg');
+            const toastIcon = document.getElementById('toast-icon');
+            
+            toastMsg.textContent = msg;
+            if (type === 'success') {
+                toastIcon.className = "fa-solid fa-circle-check text-emerald-400";
+                toast.style.borderColor = "#34d399";
+            } else if (type === 'error') {
+                toastIcon.className = "fa-solid fa-circle-xmark text-rose-400";
+                toast.style.borderColor = "#fb7185";
+            } else {
+                toastIcon.className = "fa-solid fa-circle-info text-sky-400";
+                toast.style.borderColor = "#38bdf8";
+            }
+
+            toast.classList.remove('hidden');
+            toast.classList.add('flex');
+            
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.add('hidden');
+                toast.classList.remove('flex');
+            }, 2200);
+        }
+
+        // เริ่มเกมใหม่ (รีเซ็ตคะแนนและสุ่มโจทย์ใหม่ทั้งหมด)
+        function startGame() {
+            playSound('select');
+            clearInterval(gameState.timerInterval);
+            
+            gameState = {
+                currentStage: 1,
+                timer: 0,
+                timerInterval: null,
+                totalScore: 0,
+                stageScores: {
+                    1: { base: 0, bonus: 0 },
+                    2: { base: 0, bonus: 0 },
+                    3: { base: 0, bonus: 0 }
+                },
+                streakBonus: 0
+            };
+
+            updateScoreHUD();
+            document.getElementById('screen-cover').classList.add('hidden');
+            document.getElementById('screen-summary').classList.add('hidden');
+            document.getElementById('screen-summary').classList.remove('flex');
+            document.getElementById('modal-stage-clear').classList.add('hidden');
+            document.getElementById('modal-stage-clear').classList.remove('flex');
+            
+            const gameScreen = document.getElementById('screen-game');
+            gameScreen.classList.remove('hidden');
+            gameScreen.classList.add('flex');
+
+            loadStage(1);
+        }
+
+        function updateScoreHUD() {
+            document.getElementById('hud-score').textContent = gameState.totalScore.toLocaleString();
+        }
+
+        // ระบบจับเวลาประจำด่าน
+        function startStageTimer(seconds, onTimeUp) {
+            clearInterval(gameState.timerInterval);
+            gameState.timer = seconds;
+            const timerEl = document.getElementById('hud-timer');
+            timerEl.textContent = `${gameState.timer}s`;
+            timerEl.classList.remove('text-red-500', 'scale-110');
+
+            gameState.timerInterval = setInterval(() => {
+                gameState.timer--;
+                timerEl.textContent = `${gameState.timer}s`;
+
+                if (gameState.timer <= 10) {
+                    timerEl.classList.add('text-red-500');
+                }
+
+                if (gameState.timer <= 0) {
+                    clearInterval(gameState.timerInterval);
+                    onTimeUp();
+                }
+            }, 1000);
+        }
+
+        function loadStage(stageNum) {
+            gameState.currentStage = stageNum;
+            const badge = document.getElementById('hud-level-badge');
+            const diff = document.getElementById('hud-difficulty');
+            const title = document.getElementById('hud-level-title');
+            const inst = document.getElementById('hud-instruction');
+
+            badge.textContent = stageNum;
+
+            if (stageNum === 1) {
+                badge.className = "w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center font-extrabold text-lg shadow-lg";
+                diff.textContent = "ระดับความยาก: ★☆☆ เริ่มต้น";
+                title.textContent = "ด่านที่ 1: เปิดแผ่นป้าย AR";
+                inst.textContent = "เปิดแผ่นป้ายโฮโลแกรมเพื่อจับคู่ 'เหตุการณ์/ยุคสมัย' กับ 'รายละเอียด' ให้ครบ 4 คู่";
+                initStage1();
+            } else if (stageNum === 2) {
+                badge.className = "w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-extrabold text-lg shadow-lg";
+                diff.textContent = "ระดับความยาก: ★★☆ ปานกลาง";
+                title.textContent = "ด่านที่ 2: จับคู่รหัสกาลเวลา";
+                inst.textContent = "แตะเลือกเหตุการณ์ฝั่งซ้าย แล้วแตะจับคู่กับผลลัพธ์ฝั่งขวาให้ถูกต้องครบ 5 คู่";
+                initStage2();
+            } else if (stageNum === 3) {
+                badge.className = "w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-rose-600 flex items-center justify-center font-extrabold text-lg shadow-lg";
+                diff.textContent = "ระดับความยาก: ★★★ ท้าทายสูงสุด";
+                title.textContent = "ด่านที่ 3: บททดสอบ 5 ปริศนา";
+                inst.textContent = "ตอบคำถาม 4 ตัวเลือก จำนวน 5 ข้อให้ทันเวลา (ตอบถูกต่อเนื่องรับโบนัสเพิ่ม!)";
+                initStage3();
+            }
+        }
+
+        /* ============================================================================
+           5. ด่านที่ 1: เปิดแผ่นป้าย AR (MEMORY FLIP CARDS - 8 CARDS / 4 PAIRS)
+           ============================================================================ */
+        let s1FlippedCards = [];
+        let s1MatchedPairs = 0;
+        let s1LockBoard = false;
+
+        function initStage1() {
+            const container = document.getElementById('stage-container');
+            s1FlippedCards = [];
+            s1MatchedPairs = 0;
+            s1LockBoard = false;
+
+            // สุ่มเลือก 4 คู่จากคลัง 6 คู่
+            const selectedPairs = shuffleArray(STAGE1_POOL).slice(0, 4);
+            let cards = [];
+
+            selectedPairs.forEach(item => {
+                // การ์ดใบที่ 1: หัวข้อ/เหตุการณ์
+                cards.push({
+                    pairId: item.id,
+                    type: 'term',
+                    icon: item.icon,
+                    category: item.category,
+                    text: item.term
+                });
+                // การ์ดใบที่ 2: คำอธิบาย
+                cards.push({
+                    pairId: item.id,
+                    type: 'detail',
+                    icon: 'fa-scroll',
+                    category: item.category,
+                    text: item.detail
+                });
+            });
+
+            // สลับตำแหน่งการ์ดทั้งหมด 8 ใบ
+            cards = shuffleArray(cards);
+
+            // สร้าง Grid การ์ด 2x4 (มือถือ) หรือ 4x2 (แท็บเล็ต/คอม)
+            let html = `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 md:gap-3.5 w-full max-w-3xl">`;
+            cards.forEach((card, idx) => {
+                html += `
+                    <div class="flip-card perspective-1000 h-32 sm:h-40 md:h-44 cursor-pointer" data-pair="${card.pairId}" onclick="handleCardFlip(this)">
+                        <div class="flip-card-inner">
+                            <!-- ด้านหน้าแผ่นป้าย AR -->
+                            <div class="flip-card-front">
+                                <div class="w-10 h-10 rounded-full bg-sky-500/20 border border-sky-400/50 flex items-center justify-center text-sky-300 mb-1.5">
+                                    <i class="fa-solid fa-cube text-lg"></i>
+                                </div>
+                                <span class="text-xs font-bold text-sky-300 tracking-wider">DATA #0${idx + 1}</span>
+                                <span class="text-[10px] text-slate-400 mt-0.5">แตะเพื่อสแกน</span>
+                            </div>
+                            <!-- ด้านหลังข้อมูลประวัติศาสตร์ -->
+                            <div class="flip-card-back">
+                                <span class="text-[10px] px-2 py-0.5 rounded-full ${card.type === 'term' ? 'bg-amber-500/20 text-amber-300' : 'bg-sky-500/20 text-sky-300'} font-semibold mb-1">
+                                    ${card.type === 'term' ? 'หัวข้อ/ยุคสมัย' : 'ข้อมูลสำคัญ'}
+                                </span>
+                                <p class="text-xs md:text-sm font-bold text-white leading-snug line-clamp-4">
+                                    ${card.text}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += `</div>`;
+            container.innerHTML = html;
+
+            // จับเวลาด่านที่ 1: 60 วินาที
+            startStageTimer(60, () => {
+                showToast("หมดเวลาด่านที่ 1! สรุปคะแนนเท่าที่ทำได้", "error");
+                finishStage1(true);
+            });
+        }
+
+        function handleCardFlip(cardEl) {
+            if (s1LockBoard) return;
+            if (cardEl.classList.contains('flipped') || cardEl.classList.contains('matched')) return;
+
+            playSound('flip');
+            cardEl.classList.add('flipped');
+            s1FlippedCards.push(cardEl);
+
+            if (s1FlippedCards.length === 2) {
+                s1LockBoard = true;
+                const [c1, c2] = s1FlippedCards;
+                const isMatch = c1.dataset.pair === c2.dataset.pair;
+
+                if (isMatch) {
+                    setTimeout(() => {
+                        playSound('match');
+                        c1.classList.add('matched');
+                        c2.classList.add('matched');
+                        s1MatchedPairs++;
+                        gameState.stageScores[1].base += 100;
+                        gameState.totalScore += 100;
+                        updateScoreHUD();
+                        
+                        s1FlippedCards = [];
+                        s1LockBoard = false;
+
+                        if (s1MatchedPairs === 4) {
+                            clearInterval(gameState.timerInterval);
+                            setTimeout(() => finishStage1(false), 500);
+                        }
+                    }, 350);
+                } else {
+                    setTimeout(() => {
+                        playSound('wrong');
+                        c1.classList.remove('flipped');
+                        c2.classList.remove('flipped');
+                        s1FlippedCards = [];
+                        s1LockBoard = false;
+                    }, 950);
+                }
+            }
+        }
+
+        function finishStage1(isTimeOut) {
+            const timeBonus = isTimeOut ? 0 : gameState.timer * 5;
+            gameState.stageScores[1].bonus = timeBonus;
+            gameState.totalScore += timeBonus;
+            updateScoreHUD();
+
+            showStageClearModal(
+                1,
+                isTimeOut ? "หมดเวลาด่านที่ 1!" : "ผ่านด่านที่ 1 สำเร็จ!",
+                gameState.stageScores[1].base,
+                gameState.timer,
+                timeBonus
+            );
+        }
+
+        /* ============================================================================
+           6. ด่านที่ 2: จับคู่รหัสกาลเวลา (MATCHING PAIRS - 5 PAIRS)
+           ============================================================================ */
+        let s2SelectedLeft = null;
+        let s2SelectedRight = null;
+        let s2MatchedCount = 0;
+
+        function initStage2() {
+            const container = document.getElementById('stage-container');
+            s2SelectedLeft = null;
+            s2SelectedRight = null;
+            s2MatchedCount = 0;
+
+            // สุ่มเลือก 5 คู่จากคลัง 8 คู่
+            const selectedPairs = shuffleArray(STAGE2_POOL).slice(0, 5);
+            const leftItems = shuffleArray(selectedPairs.map(p => ({ id: p.id, text: p.left })));
+            const rightItems = shuffleArray(selectedPairs.map(p => ({ id: p.id, text: p.right })));
+
+            let html = `
+                <div class="w-full max-w-3xl grid grid-cols-2 gap-2.5 md:gap-4">
+                    <!-- คอลัมน์ซ้าย: เหตุการณ์/นโยบาย -->
+                    <div class="space-y-2" id="s2-left-col">
+                        <div class="text-center text-xs font-bold text-sky-300 bg-sky-950/80 py-1 rounded-lg border border-sky-500/30">เหตุการณ์ / นโยบาย</div>
+            `;
+            leftItems.forEach(item => {
+                html += `
+                    <button type="button" data-id="${item.id}" onclick="selectS2Left(this)" 
+                        class="s2-left-btn w-full min-h-[58px] md:min-h-[64px] p-2.5 rounded-xl ar-glass hover:border-sky-400 text-left text-xs md:text-sm font-semibold text-white transition-all flex items-center justify-between gap-2">
+                        <span>${item.text}</span>
+                        <i class="fa-solid fa-circle-dot text-sky-400/50 shrink-0"></i>
+                    </button>
+                `;
+            });
+
+            html += `
+                    </div>
+                    <!-- คอลัมน์ขวา: ผลลัพธ์/ยุคสมัย -->
+                    <div class="space-y-2" id="s2-right-col">
+                        <div class="text-center text-xs font-bold text-amber-300 bg-amber-950/80 py-1 rounded-lg border border-amber-500/30">รายละเอียด / ยุคสมัย</div>
+            `;
+            rightItems.forEach(item => {
+                html += `
+                    <button type="button" data-id="${item.id}" onclick="selectS2Right(this)" 
+                        class="s2-right-btn w-full min-h-[58px] md:min-h-[64px] p-2.5 rounded-xl ar-glass hover:border-amber-400 text-left text-xs md:text-sm font-medium text-slate-200 transition-all flex items-center gap-2">
+                        <i class="fa-solid fa-circle-dot text-amber-400/50 shrink-0"></i>
+                        <span>${item.text}</span>
+                    </button>
+                `;
+            });
+
+            html += `</div></div>`;
+            container.innerHTML = html;
+
+            // จับเวลาด่านที่ 2: 50 วินาที (เพิ่มความยากเวลาลดลง)
+            startStageTimer(50, () => {
+                showToast("หมดเวลาด่านที่ 2!", "error");
+                finishStage2(true);
+            });
+        }
+
+        function selectS2Left(btn) {
+            if (btn.disabled) return;
+            playSound('select');
+            document.querySelectorAll('.s2-left-btn').forEach(b => {
+                if (!b.disabled) b.classList.remove('ring-2', 'ring-sky-400', 'bg-sky-900/80');
+            });
+            btn.classList.add('ring-2', 'ring-sky-400', 'bg-sky-900/80');
+            s2SelectedLeft = btn;
+            checkS2Match();
+        }
+
+        function selectS2Right(btn) {
+            if (btn.disabled) return;
+            playSound('select');
+            document.querySelectorAll('.s2-right-btn').forEach(b => {
+                if (!b.disabled) b.classList.remove('ring-2', 'ring-amber-400', 'bg-amber-900/80');
+            });
+            btn.classList.add('ring-2', 'ring-amber-400', 'bg-amber-900/80');
+            s2SelectedRight = btn;
+            checkS2Match();
+        }
+
+        function checkS2Match() {
+            if (!s2SelectedLeft || !s2SelectedRight) return;
+
+            const leftBtn = s2SelectedLeft;
+            const rightBtn = s2SelectedRight;
+            s2SelectedLeft = null;
+            s2SelectedRight = null;
+
+            if (leftBtn.dataset.id === rightBtn.dataset.id) {
+                // จับคู่ถูกต้อง
+                playSound('match');
+                [leftBtn, rightBtn].forEach(b => {
+                    b.disabled = true;
+                    b.classList.remove('ring-2', 'ring-sky-400', 'ring-amber-400', 'bg-sky-900/80', 'bg-amber-900/80');
+                    b.classList.add('bg-emerald-900/70', 'border-emerald-400', 'text-emerald-200', 'opacity-75');
+                });
+
+                s2MatchedCount++;
+                gameState.stageScores[2].base += 120;
+                gameState.totalScore += 120;
+                updateScoreHUD();
+
+                if (s2MatchedCount === 5) {
+                    clearInterval(gameState.timerInterval);
+                    setTimeout(() => finishStage2(false), 500);
+                }
+            } else {
+                // จับคู่ผิด
+                playSound('wrong');
+                [leftBtn, rightBtn].forEach(b => {
+                    b.classList.add('animate-shake', 'border-rose-500');
+                    setTimeout(() => {
+                        b.classList.remove('animate-shake', 'border-rose-500', 'ring-2', 'ring-sky-400', 'ring-amber-400', 'bg-sky-900/80', 'bg-amber-900/80');
+                    }, 500);
+                });
+            }
+        }
+
+        function finishStage2(isTimeOut) {
+            const timeBonus = isTimeOut ? 0 : gameState.timer * 8;
+            gameState.stageScores[2].bonus = timeBonus;
+            gameState.totalScore += timeBonus;
+            updateScoreHUD();
+
+            showStageClearModal(
+                2,
+                isTimeOut ? "หมดเวลาด่านที่ 2!" : "ผ่านด่านที่ 2 สำเร็จ!",
+                gameState.stageScores[2].base,
+                gameState.timer,
+                timeBonus
+            );
+        }
+
+        /* ============================================================================
+           7. ด่านที่ 3: ข้อสอบ 4 ตัวเลือก 5 ข้อ (สุ่มโจทย์และสลับตัวเลือกทุกครั้ง)
+           ============================================================================ */
+        let s3Questions = [];
+        let s3CurrentIndex = 0;
+        let s3Streak = 0;
+        let s3Locked = false;
+
+        function initStage3() {
+            // สุ่มข้อสอบ 5 ข้อ จากคลัง 10 ข้อ
+            s3Questions = shuffleArray(STAGE3_POOL).slice(0, 5).map(q => ({
+                ...q,
+                shuffledOptions: shuffleArray(q.options) // สลับตำแหน่งตัวเลือก ก ข ค ง ทุกครั้ง
+            }));
+
+            s3CurrentIndex = 0;
+            s3Streak = 0;
+            s3Locked = false;
+
+            renderS3Question();
+
+            // จับเวลาด่านที่ 3: 60 วินาที สำหรับ 5 ข้อ
+            startStageTimer(60, () => {
+                showToast("หมดเวลาด่านที่ 3!", "error");
+                finishStage3(true);
+            });
+        }
+
+        function renderS3Question() {
+            const container = document.getElementById('stage-container');
+            const q = s3Questions[s3CurrentIndex];
+            const choiceLabels = ['ก', 'ข', 'ค', 'ง'];
+
+            let html = `
+                <div class="w-full max-w-2xl ar-glass rounded-3xl p-5 md:p-6 border border-amber-400/50 shadow-2xl">
+                    <!-- แถบความคืบหน้าข้อสอบ -->
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="px-3 py-1 rounded-full bg-indigo-500/30 border border-indigo-400/50 text-indigo-200 text-xs font-semibold">
+                            ${q.category}
+                        </span>
+                        <div class="flex items-center gap-2">
+                            ${s3Streak >= 2 ? `<span class="px-2.5 py-0.5 rounded-full bg-amber-500/30 text-amber-300 text-xs font-bold animate-bounce"><i class="fa-solid fa-fire mr-1"></i>โบนัสต่อเนื่อง x${s3Streak}</span>` : ''}
+                            <span class="text-xs font-bold text-amber-300 bg-slate-900/80 px-3 py-1 rounded-full">
+                                ข้อที่ ${s3CurrentIndex + 1} / 5
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- โจทย์คำถาม -->
+                    <h3 class="text-base md:text-xl font-bold text-white leading-relaxed mb-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-700/80">
+                        ${q.question}
+                    </h3>
+
+                    <!-- ตัวเลือก 4 ข้อ -->
+                    <div class="space-y-2.5">
+            `;
+
+            q.shuffledOptions.forEach((opt, idx) => {
+                // ป้องกันอักขระพิเศษใน attribute โดยใช้ index อ้างอิง
+                html += `
+                    <button type="button" onclick="handleS3Answer(${idx}, this)" 
+                        class="s3-opt-btn game-btn w-full p-3.5 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-sky-500/30 hover:border-sky-400 text-left flex items-center gap-3 transition-all">
+                        <span class="w-8 h-8 rounded-xl bg-sky-500/20 border border-sky-400/40 flex items-center justify-center font-bold text-sky-300 shrink-0 text-sm">
+                            ${choiceLabels[idx]}
+                        </span>
+                        <span class="text-xs md:text-sm text-slate-100 font-medium leading-snug">${opt}</span>
+                    </button>
+                `;
+            });
+
+            html += `</div></div>`;
+            container.innerHTML = html;
+        }
+
+        function handleS3Answer(optIndex, btnEl) {
+            if (s3Locked) return;
+            s3Locked = true;
+
+            const currentQ = s3Questions[s3CurrentIndex];
+            const chosenText = currentQ.shuffledOptions[optIndex];
+            const isCorrect = (chosenText === currentQ.answer);
+            const allBtns = document.querySelectorAll('.s3-opt-btn');
+
+            if (isCorrect) {
+                playSound('match');
+                s3Streak++;
+                // คะแนนข้อละ 150 + โบนัสตอบถูกต่อเนื่องข้อละ 30
+                const streakAdd = s3Streak >= 2 ? (s3Streak - 1) * 30 : 0;
+                gameState.stageScores[3].base += 150;
+                gameState.streakBonus += streakAdd;
+                gameState.totalScore += (150 + streakAdd);
+                updateScoreHUD();
+
+                btnEl.classList.remove('bg-slate-900/80', 'border-sky-500/30');
+                btnEl.classList.add('bg-emerald-600/80', 'border-emerald-300', 'ring-2', 'ring-emerald-400');
+            } else {
+                playSound('wrong');
+                s3Streak = 0;
+                btnEl.classList.remove('bg-slate-900/80', 'border-sky-500/30');
+                btnEl.classList.add('bg-rose-600/80', 'border-rose-300', 'animate-shake');
+
+                // เฉลยข้อที่ถูกต้องให้เห็น
+                currentQ.shuffledOptions.forEach((opt, i) => {
+                    if (opt === currentQ.answer) {
+                        allBtns[i].classList.add('bg-emerald-600/60', 'border-emerald-400');
+                    }
+                });
+            }
+
+            setTimeout(() => {
+                s3CurrentIndex++;
+                s3Locked = false;
+                if (s3CurrentIndex < 5) {
+                    renderS3Question();
+                } else {
+                    clearInterval(gameState.timerInterval);
+                    finishStage3(false);
+                }
+            }, 900);
+        }
+
+        function finishStage3(isTimeOut) {
+            const timeBonus = isTimeOut ? 0 : gameState.timer * 10;
+            const totalS3Bonus = timeBonus + gameState.streakBonus;
+            gameState.stageScores[3].bonus = totalS3Bonus;
+            gameState.totalScore += timeBonus;
+            updateScoreHUD();
+
+            showStageClearModal(
+                3,
+                isTimeOut ? "หมดเวลาด่านที่ 3!" : "พิชิตด่านสุดท้ายสำเร็จ!",
+                gameState.stageScores[3].base,
+                gameState.timer,
+                totalS3Bonus
+            );
+        }
+
+        /* ============================================================================
+           8. หน้าต่างสรุปผลระหว่างด่าน และ หน้าสรุปคะแนนรวมหลังจบเกม
+           ============================================================================ */
+        function showStageClearModal(stageNum, titleText, baseScore, timeLeft, bonusScore) {
+            playSound('win');
+            const modal = document.getElementById('modal-stage-clear');
+            document.getElementById('stage-clear-title').textContent = titleText;
+            document.getElementById('stage-clear-subtitle').textContent = 
+                stageNum < 3 ? `เตรียมพร้อมเข้าสู่ด่านที่ ${stageNum + 1} (ความยากเพิ่มขึ้น)` : "รวบรวมข้อมูลประวัติศาสตร์ครบทุกมิติแล้ว!";
+            
+            document.getElementById('sc-base').textContent = `+${baseScore}`;
+            document.getElementById('sc-time-left').textContent = timeLeft;
+            document.getElementById('sc-bonus').textContent = `+${bonusScore}`;
+            document.getElementById('sc-total').textContent = `${gameState.totalScore.toLocaleString()} คะแนน`;
+
+            const nextBtn = document.getElementById('btn-next-stage');
+            if (stageNum < 3) {
+                nextBtn.innerHTML = `<span>ลุยต่อด่านที่ ${stageNum + 1}</span> <i class="fa-solid fa-arrow-right"></i>`;
+            } else {
+                nextBtn.innerHTML = `<span>ดูสรุปผลคะแนนทั้งหมด</span> <i class="fa-solid fa-trophy"></i>`;
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function proceedToNextStage() {
+            playSound('select');
+            const modal = document.getElementById('modal-stage-clear');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+
+            if (gameState.currentStage < 3) {
+                loadStage(gameState.currentStage + 1);
+            } else {
+                showFinalSummary();
+            }
+        }
+
+        function showFinalSummary() {
+            playSound('win');
+            document.getElementById('screen-game').classList.add('hidden');
+            document.getElementById('screen-game').classList.remove('flex');
+
+            const sumScreen = document.getElementById('screen-summary');
+            sumScreen.classList.remove('hidden');
+            sumScreen.classList.add('flex');
+
+            const s1 = gameState.stageScores[1];
+            const s2 = gameState.stageScores[2];
+            const s3 = gameState.stageScores[3];
+            const totalBonus = s1.bonus + s2.bonus + s3.bonus;
+            const grandTotal = gameState.totalScore;
+
+            document.getElementById('sum-s1-score').textContent = `${s1.base} คะแนน`;
+            document.getElementById('sum-s1-bonus').textContent = `(+${s1.bonus} โบนัส)`;
+
+            document.getElementById('sum-s2-score').textContent = `${s2.base} คะแนน`;
+            document.getElementById('sum-s2-bonus').textContent = `(+${s2.bonus} โบนัส)`;
+
+            document.getElementById('sum-s3-score').textContent = `${s3.base} คะแนน`;
+            document.getElementById('sum-s3-bonus').textContent = `(+${s3.bonus} โบนัส)`;
+
+            document.getElementById('sum-total-bonus').textContent = `+${totalBonus.toLocaleString()} คะแนน`;
+            document.getElementById('sum-grand-total').textContent = grandTotal.toLocaleString();
+
+            // ประเมินระดับยศ (Rank) ตามคะแนนรวม
+            const gradeEl = document.getElementById('final-grade');
+            const rankTitle = document.getElementById('final-rank-title');
+            const rankDesc = document.getElementById('final-rank-desc');
+
+            if (grandTotal >= 2400) {
+                gradeEl.textContent = "ระดับ S+";
+                rankTitle.textContent = "ปรมาจารย์นักประวัติศาสตร์ AR";
+                rankDesc.textContent = "สุดยอดอัจฉริยะ! คุณทำความเข้าใจพัฒนาการทางประวัติศาสตร์ได้อย่างรวดเร็วและแม่นยำไร้ที่ติ";
+            } else if (grandTotal >= 1800) {
+                gradeEl.textContent = "ระดับ A";
+                rankTitle.textContent = "ผู้เชี่ยวชาญมิติเวลา";
+                rankDesc.textContent = "ยอดเยี่ยมมาก! คุณสามารถเชื่อมโยงเหตุการณ์สำคัญทั้ง 4 ด้านได้อย่างแม่นยำ";
+            } else if (grandTotal >= 1200) {
+                gradeEl.textContent = "ระดับ B";
+                rankTitle.textContent = "นักสำรวจประวัติศาสตร์รุ่นใหม่";
+                rankDesc.textContent = "ทำได้ดี! ลองเล่นอีกครั้งเพื่อเก็บโบนัสเวลาให้ได้คะแนนสูงขึ้นอีกนะ";
+            } else {
+                gradeEl.textContent = "ระดับ C";
+                rankTitle.textContent = "นักเดินทางข้ามเวลาฝึกหัด";
+                rankDesc.textContent = "พยายามได้ดีมาก! กดเล่นใหม่อีกครั้งเพื่อทบทวนเนื้อหาและพิชิตโบนัสให้ครบ";
+            }
+        }
+
+        // จัดการปุ่มกลับหน้าปก
+        function confirmQuitGame() {
+            document.getElementById('modal-quit').classList.remove('hidden');
+            document.getElementById('modal-quit').classList.add('flex');
+        }
+        function closeQuitModal() {
+            document.getElementById('modal-quit').classList.add('hidden');
+            document.getElementById('modal-quit').classList.remove('flex');
+        }
+        function quitToCover() {
+            clearInterval(gameState.timerInterval);
+            closeQuitModal();
+            document.getElementById('screen-game').classList.add('hidden');
+            document.getElementById('screen-game').classList.remove('flex');
+            document.getElementById('screen-cover').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
